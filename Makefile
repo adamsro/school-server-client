@@ -1,9 +1,11 @@
-all: uniqify.o pdf 
+all: compute.o brute.o #pdf
 
 clean:
-	rm -rf *o assign1 main.dvi main.ps main.pdf main.log main.aux main.out assign1.dSYM
-uniqify.o:
-	g++ -ggdb3 -Wall uniqify.cpp -o uniqify
+	rm -rf *o ^compute.* ^brute.* main.pdf main.ps
+compute.o:
+	g++ -ggdb3 -Wall compute.cpp -o compute
+brute.o:
+	g++ -ggdb3 -Wall brute.cpp -o brute
 
 TARGET=main
 HTML=main_html
@@ -12,7 +14,7 @@ default: pdf
 
 both: pdf html
 
-dvi: ${TARGET}.tex 
+dvi: ${TARGET}.tex
 #   run latex twice to get references correct
 	latex ${TARGET}.tex
 #   you can also have a bibtex line here
