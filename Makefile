@@ -1,11 +1,9 @@
-all: compute.o brute.o #pdf
+all: compute.o  #pdf
 
 clean:
 	rm -rf *o ^compute.* ^brute.* main.pdf main.ps
 compute.o:
 	g++ -ggdb3 -Wall compute.cpp -o compute
-brute.o:
-	g++ -ggdb3 -Wall brute.cpp -o brute
 
 TARGET=main
 HTML=main_html

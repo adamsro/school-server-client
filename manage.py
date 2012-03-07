@@ -3,6 +3,7 @@
 import socket
 import sys
 import select
+import struct
 
 def main(port):
     backlog = 5
@@ -17,8 +18,9 @@ def main(port):
         client, address = listen.accept()
         data = client.recv(buff)
         if data:
+            print struct.unpack("!B", data)
             client.send(data)
         client.close()
 
 if __name__ == "__main__":
-    main(8080);
+    main(8080)

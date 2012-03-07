@@ -36,5 +36,5 @@ void print_vector(std::vector<unsigned long> temp) {
 
 int main(int argc, char* argv[]) {
 
-    print_vector(brute_perfect(1, 85898));
+    print_vector(brute_perfect(1, 9589));
 }
