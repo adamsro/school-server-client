@@ -4,7 +4,7 @@ clean:
 	rm -rf *o ^compute.* ^brute.* main.pdf main.ps
 
 compute.o:
-	g++ -ggdb3 -Wall -I. -L. compute.cpp -o compute `pkg-config --cflags --libs jansson`
+	g++ -ggdb3 -Wall compute.cpp -o compute
 
 TARGET=main
 HTML=main_html

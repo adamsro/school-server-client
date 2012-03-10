@@ -32,7 +32,6 @@ def socket_recv(sock):
     if sizepos == -1:
         raise MalformedMessage('Did not find CRLF in message %r' % peekdata)
     sizedata = read_exactly(sock, sizepos)
-    read_exactly(sock, len(CRLF))
     try:
         size = int(sizedata)
     except ValueError:
@@ -41,9 +40,11 @@ def socket_recv(sock):
     data = read_exactly(sock, size)
     return json.loads(data)
 
-def main(port):
+def handle_data(obj):
+    print repr(obj)
+
+def main(host, port):
     backlog = 5
-    host = ''
     buff = 4096
     listen = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listen.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -53,13 +54,12 @@ def main(port):
     client, address = listen.accept()
     try:
         while True:
-            r_ok, address, address = select.select([sys.stdin, sock], [], [])
+            r_ok, address, address = select.select([client], [], [])
             for fd in r_ok:
-                if fd == sys.stdin:
-                    obj = eval(fd.readline().strip())
-                    socket_send(sock, obj)
-                elif fd == sock:
-                    obj = socket_recv(sock)
+                if fd == client:
+                    print "rec obj!\n"
+                    obj = socket_recv(client)
+                    handle_data(obj)
                     print repr(obj)
     except (KeyboardInterrupt, ConnectionClosed):
         pass
@@ -67,5 +67,5 @@ def main(port):
         print '\nexiting...'
 
 if __name__ == "__main__":
-    main(8080)
+    main('127.0.0.1', 8080)
 
