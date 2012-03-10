@@ -4,6 +4,7 @@
 #include <cerrno>
 #include <fstream>
 #include <vector>
+#include <jansson.h>
 
 /*
  * For each number in range test if perfect number
@@ -35,6 +36,6 @@ void print_vector(std::vector<unsigned long> temp) {
 }
 
 int main(int argc, char* argv[]) {
-
     print_vector(brute_perfect(1, 9589));
 }
+
