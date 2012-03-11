@@ -5,6 +5,8 @@ import socket
 import select
 import json
 
+#from pudb import set_trace; set_trace()
+
 CRLF = '\r\n'
 class MalformedMessage(Exception): pass
 class ConnectionClosed(Exception): pass
@@ -21,8 +23,7 @@ def peek(sock, buflen):
 
 def socket_send(sock, obj):
     data = json.dumps(obj)
-    size = len(data)
-    sock.sendall('%i%s%s' % (size, CRLF, data))
+    sock.sendall('%s%s' % (data, CRLF))
 
 def socket_recv(sock):
     peekdata = peek(sock, 1024)
@@ -31,17 +32,11 @@ def socket_recv(sock):
     sizepos = peekdata.find(CRLF)
     if sizepos == -1:
         raise MalformedMessage('Did not find CRLF in message %r' % peekdata)
-    sizedata = read_exactly(sock, sizepos)
-    try:
-        size = int(sizedata)
-    except ValueError:
-        raise MalformedMessage(
-            'size data %r could not be converted to an int' % sizedata)
-    data = read_exactly(sock, size)
+    data = read_exactly(sock, sizepos)
     return json.loads(data)
 
-def handle_data(obj):
-    print repr(obj)
+def calc_range(benchmark):
+    return {'type': 'range', 'data': {'lower': 0, 'upper': 1024}}
 
 def main(host, port):
     backlog = 5
@@ -51,16 +46,19 @@ def main(host, port):
     listen.bind((host, port))
     listen.listen(backlog)
     print "server running"
-    client, address = listen.accept()
     try:
         while True:
-            r_ok, address, address = select.select([client], [], [])
+            client, _ = listen.accept()
+            r_ok, _ , _ = select.select([client], [], [])
             for fd in r_ok:
                 if fd == client:
-                    print "rec obj!\n"
                     obj = socket_recv(client)
-                    handle_data(obj)
                     print repr(obj)
+                    if obj['type'] == 'performance':
+                        range_data = calc_range(obj['data']['result'])
+                        print range_data
+                        socket_send(client, range_data)
+
     except (KeyboardInterrupt, ConnectionClosed):
         pass
     finally:

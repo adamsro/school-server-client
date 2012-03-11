@@ -3,6 +3,7 @@
  * http://www.linuxhowtos.org/C_C++/socket.htm
  */
 #include <cstdlib>
+#include <cstdio>
 #include <iostream>
 #include <cerrno>
 #include <fstream>
@@ -12,9 +13,15 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+/* for benchmark */
+#include <time.h>
+#include <unistd.h>
 /* rapidjson */
-#include "rapidjson/reader.h"
+#include "rapidjson/document.h"		// rapidjson's DOM-style API
+#include "rapidjson/prettywriter.h"	// for stringify JSON
+#include "rapidjson/filestream.h"	// wrapper of C stream for prettywriter as output
 #include "rapidjson/filereadstream.h"
+#include "rapidjson/reader.h"
 /* for sockets */
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -43,6 +50,19 @@ std::vector<unsigned long> brute_perfect(unsigned long start, unsigned long end)
     }
     return perfect_nums;
 }
+
+double test_speed() {
+    time_t start;
+    time_t theend;
+    int sum;
+    start = clock();
+    for(int i = 0; i < INT_MAX; ++i) {
+        sum += i;
+    }
+    theend = clock();
+    return (((double) (theend - start)) / (double) CLOCKS_PER_SEC);
+}
+
 /* print vector to console: for debugging. */
 void print_vector(std::vector<unsigned long> temp) {
     std::cout << "arr: ";
@@ -52,21 +72,30 @@ void print_vector(std::vector<unsigned long> temp) {
     std::cout << std::endl;
 }
 
+class SendRecv { 
+    std::string host;
+    int port;
+    SendRecv (std::string thehost, int theport) {
+        host = thehost;
+        port = theport;
+    }
+};
+
 int main(int argc, char* argv[]) {
-/*    print_vector(brute_perfect(1, 9589));
-    
-    rapidjson::Reader reader;
-	char readBuffer[65536];
-    rapidjson::FileReadStream is(stdin, readBuffer, sizeof(readBuffer));
-*/
+    /*    print_vector(brute_perfect(1, 9589));
+
+          rapidjson::Reader reader;
+          char readBuffer[65536];
+          rapidjson::FileReadStream is(stdin, readBuffer, sizeof(readBuffer));
+          */
     int sockfd, portno, n;
     struct sockaddr_in serv_addr;
     struct hostent *server;
+    char buffer[65536];
 
-    char buffer[256];
     if (argc < 3) {
-        fprintf(stderr,"usage %s hostname port\n", argv[0]);
         exit(0);
+        fprintf(stderr,"usage %s hostname port\n", argv[0]);
     }
     portno = atoi(argv[2]);
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -86,22 +115,56 @@ int main(int argc, char* argv[]) {
             server->h_length);
 
     serv_addr.sin_port = htons(portno);
-    if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) { 
+    if (connect(sockfd,(struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
         perror("ERROR connecting");
         exit(EXIT_FAILURE);
     }
-
-    printf("Please enter the message: ");
-    bzero(buffer,256);
-    fgets(buffer,255,stdin);
-    n = write(sockfd,buffer,strlen(buffer));
-    if (n < 0) 
+    /* send result */
+    double result;
+    char perf_json[256];
+    result = test_speed();
+    sprintf(perf_json,
+            "{\"type\": \"performance\", \"data\": {\"result\": %f}}\r\n",
+            result);
+    n = write(sockfd, perf_json, strlen(perf_json));
+    if (n < 0) {
         perror("ERROR writing to socket");
-    bzero(buffer,256);
-    n = read(sockfd,buffer,255);
-    if (n < 0) 
+        exit(EXIT_FAILURE);
+    }
+
+    bzero(buffer,65536);
+    n = read(sockfd, buffer, 65536);
+    if (n < 0) {
         perror("ERROR reading from socket");
+        exit(EXIT_FAILURE);
+    }
+
+    //rapidjson::Reader reader;
+	//char readBuffer[65536];
+    //rapidjson::FileReadStream is(sockfd, readBuffer, sizeof(readBuffer));
+
+    rapidjson::Document document;	// Default template parameter uses UTF8 and MemoryPoolAllocator.
+
+    std::cout << "start output";
     printf("%s\n",buffer);
+
+	if (document.Parse<0>(buffer).HasParseError()) {
+        std::cout << "ERROR parseing json";
+        exit(EXIT_FAILURE);
+    }
+
+    std::string type = document["type"].GetString();
+    std::cout << type;
+    if(type.compare("range") == 0) {
+        std::cout << "parsed!!";
+    }
+
+	printf("\nModified JSON with reformatting:\n");
+    rapidjson::FileStream f(stdout);
+	rapidjson::PrettyWriter<rapidjson::FileStream> writer(f);
+	document.Accept(writer);	// Accept() traverses the DOM and generates Handler events.
+
+    //printf("%s\n",buffer);
     close(sockfd);
     return 0;
 }
