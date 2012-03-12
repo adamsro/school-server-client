@@ -124,7 +124,7 @@ int main(int argc, char* argv[]) {
     char perf_json[256];
     result = test_speed();
     sprintf(perf_json,
-            "{\"type\": \"performance\", \"data\": {\"result\": %f}}\r\n",
+            "{\"type\": \"ack\", \"data\": {\"result\": %f}}\r\n",
             result);
     n = write(sockfd, perf_json, strlen(perf_json));
     if (n < 0) {
