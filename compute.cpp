@@ -13,6 +13,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <math.h>
+#include <fcntl.h>
 /* for benchmark */
 #include <time.h>
 #include <unistd.h>
@@ -28,17 +30,20 @@
 #include <netinet/in.h>
 #include <netdb.h>
 
+#define DEBUG 1
+
+typedef long range_t[2];
 /* bzero is legacy, so define */
 #define bzero(b,len) (memset((b), '\0', (len)), (void) 0)
 /*
  * For each number in range, test if perfect number
  */
-std::vector<unsigned long> brute_perfect(unsigned long start, unsigned long end) {
-    std::vector<unsigned long> perfect_nums;
+std::vector<long> brute_perfect( long start,  long end) {
+    std::vector<long> perfect_nums;
 
-    for (unsigned long testnum = start; testnum < end; ++testnum) {
-        unsigned long factor_sum = 0;
-        for (unsigned long k = 1; k < testnum; ++k) {
+    for (long testnum = start; testnum < end; ++testnum) {
+        long factor_sum = 0;
+        for (long k = 1; k < testnum; ++k) {
             if (testnum % k == 0) { // is k a factor of testnum?
                 factor_sum += k;
             }
@@ -64,30 +69,71 @@ double test_speed() {
 }
 
 /* print vector to console: for debugging. */
-void print_vector(std::vector<unsigned long> temp) {
-    std::cout << "arr: ";
+void print_vector(std::vector<long> temp) {
     for (int i = 0; i < (int) temp.size(); ++i) {
         std::cout << temp.at(i) << " ";
     }
     std::cout << std::endl;
 }
 
-class SendRecv { 
-    std::string host;
-    int port;
-    SendRecv (std::string thehost, int theport) {
-        host = thehost;
-        port = theport;
+std::vector<long> parse_json_range(char buffer[]) {
+    rapidjson::Document document;	// Default template parameter uses UTF8 and MemoryPoolAllocator.
+
+#ifdef DEBUG
+    if (document.Parse<0>(buffer).HasParseError()) {
+        std::cout << "ERROR parseing json\n";
+        exit(EXIT_FAILURE);
     }
-};
+#endif
+
+    rapidjson::FileStream f(stdout);
+    rapidjson::PrettyWriter<rapidjson::FileStream> writer(f);
+    document.Accept(writer);	// Accept() traverses the DOM and generates Handler events.
+
+#ifdef DEBUG
+    // print parsed input
+    std::string type = document["type"].GetString();
+    if(type.compare("range") != 0) {
+        std::cout << "json not type 'range'";
+        exit(0);
+    }
+#endif
+
+    const rapidjson::Value &data = document["data"];
+    std::vector<long> range(2);
+    range[0] = ( long) floor(data["lower"].GetDouble());
+    range[1] = ( long) floor(data["upper"].GetDouble());
+    return range;
+}
+
+void build_json_result(long upper, std::vector<long> brute, char* buffer) {
+    char brute_buff[65536];
+    char temp[65536];
+    for (int i = 0; i < (int) brute.size(); ++i) {
+        if (i == (int) brute.size() -1) {
+            sprintf(temp, "%ld", brute.at(i));
+        } else {
+            sprintf(temp, "%ld, ", brute.at(i));
+        }
+        strcat(brute_buff, temp);
+    }
+    sprintf(buffer, "{\"type\": \"result\", \"data\": {\"upper\": %ld, \"perfect\": [%s]}}\r\n",
+            upper, brute_buff);
+}
+void write_to_server(int sockfd, char* buffer) {
+    int n = send(sockfd, buffer, strlen(buffer) + 1, 0);
+    if (n < 0) {
+        perror("ERROR writing to socket");
+        exit(EXIT_FAILURE);
+    }
+}
+void read_from_server(int sockfd, char* buffer) {
+
+}
 
 int main(int argc, char* argv[]) {
-    /*    print_vector(brute_perfect(1, 9589));
 
-          rapidjson::Reader reader;
-          char readBuffer[65536];
-          rapidjson::FileReadStream is(stdin, readBuffer, sizeof(readBuffer));
-          */
+    // a little ugly, but working...
     int sockfd, portno, n;
     struct sockaddr_in serv_addr;
     struct hostent *server;
@@ -111,7 +157,7 @@ int main(int argc, char* argv[]) {
     bzero((char *) &serv_addr, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     memmove((char *)&serv_addr.sin_addr.s_addr,
-            (char *)server->h_addr, 
+            (char *)server->h_addr,
             server->h_length);
 
     serv_addr.sin_port = htons(portno);
@@ -119,52 +165,34 @@ int main(int argc, char* argv[]) {
         perror("ERROR connecting");
         exit(EXIT_FAILURE);
     }
+    //fcntl(sockfd, F_SETFL, O_NONBLOCK);
+
     /* send result */
     double result;
-    char perf_json[256];
     result = test_speed();
-    sprintf(perf_json,
-            "{\"type\": \"ack\", \"data\": {\"result\": %f}}\r\n",
+    bzero(buffer,65536);
+    sprintf(buffer,
+            "{\"type\": \"ack\", \"data\": {\"perform\": %f}}\r\n",
             result);
-    n = write(sockfd, perf_json, strlen(perf_json));
-    if (n < 0) {
-        perror("ERROR writing to socket");
-        exit(EXIT_FAILURE);
-    }
+
+    write_to_server(sockfd, buffer);
 
     bzero(buffer,65536);
-    n = read(sockfd, buffer, 65536);
+    n = recv(sockfd, buffer, 65536, 0);
     if (n < 0) {
         perror("ERROR reading from socket");
         exit(EXIT_FAILURE);
     }
 
-    //rapidjson::Reader reader;
-	//char readBuffer[65536];
-    //rapidjson::FileReadStream is(sockfd, readBuffer, sizeof(readBuffer));
+    std::vector<long> range = parse_json_range(buffer);
+    std::vector<long> brute = brute_perfect(range[0], range[1]);
+    bzero(buffer,65536);
+    build_json_result(range[1], brute, buffer);
+#ifdef DEBUG
+    std::cout << std::endl << buffer;
+#endif
+    write_to_server(sockfd, buffer);
 
-    rapidjson::Document document;	// Default template parameter uses UTF8 and MemoryPoolAllocator.
-
-    std::cout << "start output";
-    printf("%s\n",buffer);
-
-	if (document.Parse<0>(buffer).HasParseError()) {
-        std::cout << "ERROR parseing json";
-        exit(EXIT_FAILURE);
-    }
-
-    std::string type = document["type"].GetString();
-    std::cout << type;
-    if(type.compare("range") == 0) {
-        std::cout << "parsed!!";
-    }
-
-	printf("\nModified JSON with reformatting:\n");
-    rapidjson::FileStream f(stdout);
-	rapidjson::PrettyWriter<rapidjson::FileStream> writer(f);
-	document.Accept(writer);	// Accept() traverses the DOM and generates Handler events.
-
-    //printf("%s\n",buffer);
     close(sockfd);
     return 0;
 }
