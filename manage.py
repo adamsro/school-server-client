@@ -25,21 +25,21 @@ class Manage:
 
     def start(self):
         backlog = 5
-        listen = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        listen.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        listen.bind((self.host, self.port))
-        listen.listen(backlog)
-        theinput = [listen]
+        self.listen = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.listen.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.listen.bind((self.host, self.port))
+        self.listen.listen(backlog)
+        self.theinput = [self.listen]
         try:
             while True:
-                inputrdy, outputrdy, exceptrdy = select.select(theinput, [], [])
+                inputrdy, outputrdy, exceptrdy = select.select(self.theinput, [], [])
                 for fd in inputrdy:
-                    if fd == listen:
-                        client, address = listen.accept()
-                        theinput.append(client)
+                    if fd == self.listen:
+                        client, address = self.listen.accept()
+                        self.theinput.append(client)
                         obj = self._socket_recv(client)
                         self._handle_input(client, address, obj)
-                    elif fd in theinput:
+                    elif fd in self.theinput:
                         obj = self._socket_recv(fd)
                         if obj: self._handle_input(client, address, obj)
                         #else: continue
@@ -57,15 +57,20 @@ class Manage:
         elif obj['type'] == 'result':
             # receive calculation data from compute and send a new range.
             client_obj = self._get_client(address, obj)
-            if not client_obj:
-                raise UnknownServer('Server %s has not sent Ack.' % address[1])
+            #if not client_obj:
+                #raise UnknownServer('Server %s has not sent Ack.' % address[1])
             self._save_result(obj['data'])
             range_data = self._calc_range(obj['data']['perform'])
             self._socket_send(client, range_data)
         elif obj['type'] == 'report':
-             # if a request for a report is made, send all info
-             report_data = self._format_report()
-             self._socket_send(client, report_data)
+            # if a request for a report is made, send all info
+            report_data = self._format_report()
+            self._socket_send(client, report_data)
+        elif obj['type'] == 'kill':
+            for socket in self.theinput:
+                if socket != self.listen:
+                    data = {'type': 'kill'}
+                    self._socket_send(socket, data)
 
     def _socket_send(self, sock, obj):
         data = json.dumps(obj)

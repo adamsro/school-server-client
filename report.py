@@ -1,6 +1,7 @@
 import sys
 import socket
 import json
+import getopt
 
 #from pudb import set_trace; set_trace()
 
@@ -23,12 +24,25 @@ def read_exactly(sock, buflen):
         data += sock.recv(buflen - len(data))
     return data
 
-def main(host, port):
+def main(host, port, kill):
     sock = socket.socket()
     sock.connect((host, int(port)))
-    data = json.dumps({'type':'report'})
+    if kill:
+        data = json.dumps({'type':'kill'})
+    else:
+        data = json.dumps({'type':'report'})
     sock.sendall("%s%s" % (data, CRLF))
     print json.dumps(socket_recv(sock), indent=4)
 
+
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2]);
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "k", ["kill"])
+    except getopt.GetoptError, err:
+        # print help information and exit:
+        print str(err) # will print something like "option -a not recognized"
+    for o, a in opts:
+        if o == "-k":
+            main(sys.argv[2], sys.argv[3], True);
+            exit(1)
+    main(sys.argv[1], sys.argv[2], False);

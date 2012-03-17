@@ -38,6 +38,14 @@
 typedef long range_t[2];
 /* bzero is legacy, so define */
 #define bzero(b,len) (memset((b), '\0', (len)), (void) 0)
+
+
+/*
+ * Make sockfd and thread global so we can close them later
+ */
+long sockfd;
+pthread_t thread;
+//pthread_mutex_t the_mutex; // allow signal handling w/ thread paused
 /*
  * For each number in range, test if perfect number
  */
@@ -68,29 +76,59 @@ double test_speed() {
     theend = clock();
     return (((double) (theend - start)) / (double) CLOCKS_PER_SEC);
 }
-void sigquit() {
-    printf("die!\n");
-    exit(0);
+
+void sig_handler(int signum) {
+     //pthread_mutex_lock(&the_mutex);
+#ifdef DEBUG
+    printf("Caught signal %d\n",signum);
+    /* Clean up, clean up, everybody everywhere. */
+#endif
+    close(sockfd);
+    pthread_cancel(thread);
+    //pthread_mutex_unlock(&the_mutex);
+    exit(signum);
 }
 
-//void *kill(void *sockfd) {
-//int sock = (int) sockfd;
-//int n;
-//char buffer[65536];
-//pid_t self;
-//signal(SIGQUIT, sigquit);
+/* allow for remote kill */
+void *kill(void *sockfd) {
+    long sock = (long) sockfd;
+    int n;
+    char buffer[65536];
+    // Default template parameter uses UTF8 and MemoryPoolAllocator.
 
-//n = recv(sockfd, buffer, 65536, MSG_PEEK);
-//if (n < 0) {
-//perror("ERROR reading from socket");
-//exit(EXIT_FAILURE);
-//}
-//std::cout << buffer;
-//if(buffer[0] == "k") {
-//self = getpid();
-//kill(self);
-//}
-//}
+    signal(SIGHUP,sig_handler); /* set function calls */
+    signal(SIGINT,sig_handler);
+    signal(SIGQUIT, sig_handler);
+
+    rapidjson::Document document;	
+    while (true) {
+        bzero(buffer, 65536);
+        n = recv(sock, buffer, 65536, MSG_PEEK);
+        if (n < 0) {
+            perror("ERROR reading from socket: thread");
+            exit(EXIT_FAILURE);
+        }
+
+        if (document.Parse<0>(buffer).HasParseError()) {
+            std::cout << "ERROR parsing json: thread\n";
+            exit(EXIT_FAILURE);
+        }
+
+        // print parsed input
+        std::string type = document["type"].GetString();
+        if(type.compare("kill") == 0) {
+
+#ifdef DEBUG
+            rapidjson::FileStream f(stdout);
+            rapidjson::PrettyWriter<rapidjson::FileStream> writer(f);
+            document.Accept(writer);	// Accept() traverses the DOM and generates Handler events.
+#endif
+            n = recv(sock, buffer, 65536, 0);
+            kill(getpid(), SIGQUIT);
+        }
+    }
+
+}
 
 /* print vector to console: for debugging. */
 void print_vector(std::vector<long> temp) {
@@ -103,24 +141,23 @@ void print_vector(std::vector<long> temp) {
 std::vector<long> parse_json_range(char buffer[]) {
     rapidjson::Document document;	// Default template parameter uses UTF8 and MemoryPoolAllocator.
 
-#ifdef DEBUG
     if (document.Parse<0>(buffer).HasParseError()) {
         std::cout << "ERROR parsing json\n";
         exit(EXIT_FAILURE);
     }
-#endif
+
+#ifdef DEBUG
     rapidjson::FileStream f(stdout);
     rapidjson::PrettyWriter<rapidjson::FileStream> writer(f);
     document.Accept(writer);	// Accept() traverses the DOM and generates Handler events.
+#endif
 
-#ifdef DEBUG
     // print parsed input
     std::string type = document["type"].GetString();
     if(type.compare("range") != 0) {
         std::cout << "json not type 'range'";
         exit(0);
     }
-#endif
 
     const rapidjson::Value &data = document["data"];
     std::vector<long> range(2);
@@ -160,7 +197,8 @@ void read_from_server(int sockfd, char* buffer) {
 int main(int argc, char* argv[]) {
 
     // a little ugly, but working...
-    int sockfd, portno, n;
+    long portno;
+    long n;
     struct sockaddr_in serv_addr;
     struct hostent *server;
     char buffer[65536];
@@ -194,13 +232,12 @@ int main(int argc, char* argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    /* allow for remote kill */
-    pthread_t thread;
+
+    //pthread_mutex_init(&the_mutex, NULL);
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
-    int thread_id = 0;
-    //pthread_create(&thread, &attr, kill, (void *) thread_id);
+    pthread_create(&thread, &attr, kill, (void *) sockfd);
 
     /* send initial Ack message */
     double perform;
@@ -228,10 +265,9 @@ int main(int argc, char* argv[]) {
         }
         brute.clear();
         brute_perfect(range[0], range[1], &brute);
-        for(int k; k < brute.size(); k++) {
+        for(int k; k < (int) brute.size(); k++) {
             std::cout << brute.at(k) << " ";
         }
-        //print_vector(brute);
         /* run brute computation and send result */
         bzero(buffer, 65536);
         build_json_result(range[1], &brute, perform, buffer);
