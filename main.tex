@@ -34,15 +34,15 @@
   colorlinks = true,
   urlcolor = black,
   pdfauthor = {\name},
-  pdfkeywords = {cs311 ``operating systems'' sieve primes threaded},
-  pdftitle = {CS 311 Project 3: A threaded implementation Sieve of Eratosthenes},
-  pdfsubject = {CS 311 Project 3},
+  pdfkeywords = {cs311 ``operating systems'' },
+  pdftitle = {S 311 Project 4: Python Server, C Client},
+  pdfsubject = {CS 311 Project 4},
   pdfpagemode = UseNone
 }
 
 
 \begin{document}
-  \title{CS 311 Project 3: A threaded implementation of Sieve of Eratosthenes}
+  \title{CS 311 Project 4: Python Server, C Client}
   \author{Robert Adams}
 \maketitle
 
@@ -50,56 +50,46 @@
 \section{Design Decisions}
 
 
-I choose Sieve of Eratosthenes method of finding primes as the large loops it requires to mark numbers as non prime seemed a good candidate for parallel running.
- Although I believe I could malloc a bitmap and pass it into the thread's function, for simplicity I made it global along with the max number and the current number to be checked.
-  All threads share and increment the current odd number to be checked as prime. I used macros for the bitmap manipulation to make it easier to read the program.
+	I decided to use the JSON format to send and receive messages between the programs.
+    Although this was more work, it allows me more flexibility then say parsing a sting 
+    and breaking it into variables by white space. 
 
+
+	To prevent remote code from being executed I only parsed until a
+    line ending was reached, then if the parsed content is not in 
+    JSON format, the program throws an exception and exits.  
+    In a program with more practical use it may be best to just 
+    ignore anything not conforming to the format.
+	
 
 \section{Difficulties}
 
 
-Although I was able to come up with a serial implementation of Sieve of Eratosthenes, coming up with the structure to effectively parallelize the algorithm took a god deal of refinement.  
-I started with an implementation that found the primes in one thread and marked them in another but I found it difficult to synchronize the data and eventually ended up with something that worked but was effectively serial.  
-It used conditions to mutex locks to block everything until a prime was found, then the primes loop would be locked until all non-primes were marked.  
-It took a step back and other look a day later to find a solution without locking, which is the only way an implementation could find 2\verb|^|32 primes in under 45 secs. My algorithm was able to find all primes in 2\verb|^|32 in 17 secs with 8 threads on my personal computer.
+	Parsing a JSON string with C turned out to be quite the hassle.
+    I was finally able to find a header only library and included it,
+    but even getting that to work with its minimal examples and 
+    documentation took lots of trial and error.
 
 
+	Using ‘select’ properly was also a challenge. I was
+    initially trying to accept every connection instead of registering
+    each new connection as a list for select to iterate over. 
 
-  \begin{figure}[p]
-    \centering
-    \input{plot.tex}
-    \caption{Runtimes with 8 threads until 2\textasciicircum32. }
-    \label{runtimes}
-  \end{figure}
-
-  \begin{figure}[p]
-    \centering
-    \input{plot-threaded.tex}
-    \caption{Runtimes 1-8 threads at 2\textasciicircum32 upper limit.}
-    \label{runtimes}
-  \end{figure}
 
 \begin{table}
 \centering
-    \begin{tabular}{ |l|l| }
+    \begin{tabular}{|l|l|}
 \hline
         Date                           & Description                                                                  \\ \hline
- Sun Feb 26 12:01:03 2012 -0800      & changed output for gnuplot    \\
-Sun Feb 26 11:21:03 2012 -0800       & comment out set style in gnuplot \\
- Sat Feb 25 19:01:19 2012 -0800     &   minor refactoring   \\
-Sat Feb 25 18:30:31 2012 -0800      &   better timing code, will do 2\verb|^|32 2threads 41sec \\
-Sat Feb 25 17:46:21 2012 -0800      &   runs to sqrt of n   \\
-Sat Feb 25 16:48:15 2012 -0800       &   fixed testnum = 1, runs 429496729 in 61 sec \\
-Sat Feb 25 16:12:48 2012 -0800      &   better structure, missing some primes though    \\
-Sat Feb 25 12:39:24 2012 -0800      &   added another condition variable, pretty much just works like a serial alg now...   \\
-Fri Feb 24 17:41:29 2012 -0800      &   changed limit to max. Working, but only with sleep(1)   \\
-Fri Feb 24 16:38:46 2012 -0800      &   hreads start in the correct order   \\
-Fri Feb 24 16:27:58 2012 -0800      &   reworked no infinit loop. gets first prime and hangs    \\
-Fri Feb 24 15:04:37 2012 -0800      &    in the process of adding pthread cond and mutex    \\
-Tue Feb 21 20:31:37 2012 -0800      &   doesnt calc first primes, starts at 17  \\
-Sat Feb 18 14:53:21 2012 -0800      &   added example for sieve primes w/ bitmap    \\
-Fri Feb 17 20:06:10 2012 -0800      &   added proper include for compile with sleep \\
-Fri Feb 17 15:55:06 2012 -0800      &    has pthread tutorial code  \\
+  Fri Mar 16 22:34:23 2012 -0700     & compute more or less receives kill singal and dies \\
+ Fri Mar 16 18:51:32 2012 -0700      &    code for part2, compute working \\
+Wed Mar 14 12:24:19 2012 -0700        & server now sends and recvs all messages correctly: fixed logic i \\ 
+  Sun Mar 11 23:38:22 2012 -0700      & manage refactored, handles all req inputs  \\
+ Sat Mar 10 21:44:55 2012 -0800       & client recieves and parses json   \\
+ Sat Mar 10 15:15:17 2012 -0800       & added socket connect code to compute cleint and server connect   \\
+Wed Mar 7 14:53:53 2012 -0800         & compute has brute.cpp code \\
+  Sun Mar 4 19:46:31 2012 -0800       &  added simple server in python & python client \\
+   Sun Mar 4 12:22:11 2012 -0800      & touch blank files \\
 
 \hline
     \end{tabular}

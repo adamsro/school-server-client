@@ -1,4 +1,4 @@
-all: compute.o  #pdf
+all: compute.o  pdf
 
 clean:
 	rm -rf *o ^compute.* ^brute.* main.pdf main.ps
