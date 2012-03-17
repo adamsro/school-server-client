@@ -29,6 +29,9 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
+/* for remote kill */
+#include <pthread.h>
+#include <signal.h>
 
 #define DEBUG 1
 
@@ -38,8 +41,7 @@ typedef long range_t[2];
 /*
  * For each number in range, test if perfect number
  */
-std::vector<long> brute_perfect( long start,  long end) {
-    std::vector<long> perfect_nums;
+void brute_perfect( long start,  long end, std::vector<long> *perfect) {
 
     for (long testnum = start; testnum < end; ++testnum) {
         long factor_sum = 0;
@@ -50,10 +52,9 @@ std::vector<long> brute_perfect( long start,  long end) {
         }
         // does testnum meet the definition of perf. num?
         if (factor_sum == testnum) {
-            perfect_nums.push_back(testnum);
+            perfect->push_back(testnum);
         }
     }
-    return perfect_nums;
 }
 
 double test_speed() {
@@ -67,6 +68,29 @@ double test_speed() {
     theend = clock();
     return (((double) (theend - start)) / (double) CLOCKS_PER_SEC);
 }
+void sigquit() {
+    printf("die!\n");
+    exit(0);
+}
+
+//void *kill(void *sockfd) {
+//int sock = (int) sockfd;
+//int n;
+//char buffer[65536];
+//pid_t self;
+//signal(SIGQUIT, sigquit);
+
+//n = recv(sockfd, buffer, 65536, MSG_PEEK);
+//if (n < 0) {
+//perror("ERROR reading from socket");
+//exit(EXIT_FAILURE);
+//}
+//std::cout << buffer;
+//if(buffer[0] == "k") {
+//self = getpid();
+//kill(self);
+//}
+//}
 
 /* print vector to console: for debugging. */
 void print_vector(std::vector<long> temp) {
@@ -81,11 +105,10 @@ std::vector<long> parse_json_range(char buffer[]) {
 
 #ifdef DEBUG
     if (document.Parse<0>(buffer).HasParseError()) {
-        std::cout << "ERROR parseing json\n";
+        std::cout << "ERROR parsing json\n";
         exit(EXIT_FAILURE);
     }
 #endif
-
     rapidjson::FileStream f(stdout);
     rapidjson::PrettyWriter<rapidjson::FileStream> writer(f);
     document.Accept(writer);	// Accept() traverses the DOM and generates Handler events.
@@ -106,20 +129,23 @@ std::vector<long> parse_json_range(char buffer[]) {
     return range;
 }
 
-void build_json_result(long upper, std::vector<long> brute, char* buffer) {
+void build_json_result(long upper, std::vector<long> *brute, double perform, char* buffer) {
     char brute_buff[65536];
     char temp[65536];
-    for (int i = 0; i < (int) brute.size(); ++i) {
-        if (i == (int) brute.size() -1) {
-            sprintf(temp, "%ld", brute.at(i));
+    bzero(temp, 65536);
+    bzero(brute_buff, 65536);
+    for (int i = 0; i < (int) brute->size(); ++i) {
+        if (i == (int) brute->size() - 1) {
+            sprintf(temp, "%ld", brute->at(i));
         } else {
-            sprintf(temp, "%ld, ", brute.at(i));
+            sprintf(temp, "%ld, ", brute->at(i));
         }
         strcat(brute_buff, temp);
     }
-    sprintf(buffer, "{\"type\": \"result\", \"data\": {\"upper\": %ld, \"perfect\": [%s]}}\r\n",
-            upper, brute_buff);
+    sprintf(buffer, "{\"type\": \"result\", \"data\": {\"upper\": %ld, \"perform\": %f, \"perfect\": [%s]}}\r\n",
+            upper, perform, brute_buff);
 }
+
 void write_to_server(int sockfd, char* buffer) {
     int n = send(sockfd, buffer, strlen(buffer) + 1, 0);
     if (n < 0) {
@@ -138,6 +164,8 @@ int main(int argc, char* argv[]) {
     struct sockaddr_in serv_addr;
     struct hostent *server;
     char buffer[65536];
+    std::vector<long> brute;
+    std::vector<long> range;
 
     if (argc < 3) {
         exit(0);
@@ -165,34 +193,55 @@ int main(int argc, char* argv[]) {
         perror("ERROR connecting");
         exit(EXIT_FAILURE);
     }
-    //fcntl(sockfd, F_SETFL, O_NONBLOCK);
 
-    /* send result */
-    double result;
-    result = test_speed();
+    /* allow for remote kill */
+    pthread_t thread;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+    int thread_id = 0;
+    //pthread_create(&thread, &attr, kill, (void *) thread_id);
+
+    /* send initial Ack message */
+    double perform;
+    perform = test_speed();
     bzero(buffer,65536);
     sprintf(buffer,
             "{\"type\": \"ack\", \"data\": {\"perform\": %f}}\r\n",
-            result);
-
+            perform);
     write_to_server(sockfd, buffer);
 
-    bzero(buffer,65536);
-    n = recv(sockfd, buffer, 65536, 0);
-    if (n < 0) {
-        perror("ERROR reading from socket");
-        exit(EXIT_FAILURE);
+    while(true) {
+        /* read range info from server */
+        bzero(buffer,65536);
+        n = recv(sockfd, buffer, 65536, 0);
+        if (n < 0) {
+            perror("ERROR reading from socket");
+            exit(EXIT_FAILURE);
+        }
+        range = parse_json_range(buffer);
+
+        /* we're at max int, break and exit */ 
+        if(range[0] == range[1]) {
+            std::cout << "Max computation range reached!\n" << range[0];
+            break;
+        }
+        brute.clear();
+        brute_perfect(range[0], range[1], &brute);
+        for(int k; k < brute.size(); k++) {
+            std::cout << brute.at(k) << " ";
+        }
+        //print_vector(brute);
+        /* run brute computation and send result */
+        bzero(buffer, 65536);
+        build_json_result(range[1], &brute, perform, buffer);
+#ifdef DEBUG
+        std::cout << std::endl << buffer;
+#endif
+        write_to_server(sockfd, buffer);
     }
 
-    std::vector<long> range = parse_json_range(buffer);
-    std::vector<long> brute = brute_perfect(range[0], range[1]);
-    bzero(buffer,65536);
-    build_json_result(range[1], brute, buffer);
-#ifdef DEBUG
-    std::cout << std::endl << buffer;
-#endif
-    write_to_server(sockfd, buffer);
-
+    pthread_cancel(thread);
     close(sockfd);
     return 0;
 }

@@ -60,7 +60,7 @@ class Manage:
             if not client_obj:
                 raise UnknownServer('Server %s has not sent Ack.' % address[1])
             self._save_result(obj['data'])
-            range_data = self._calc_range(client_obj['perform'])
+            range_data = self._calc_range(obj['data']['perform'])
             self._socket_send(client, range_data)
         elif obj['type'] == 'report':
              # if a request for a report is made, send all info
@@ -97,11 +97,13 @@ class Manage:
                  return client 
         return False
 
-    def _calc_range(self, result):
-        upper = math.floor(self.highest_sent + result * 10000)
+    def _calc_range(self, perform):
+        upper = math.floor(self.highest_sent + (perform * 4000))
         if upper <= sys.maxint:
-            return {'type': 'range', 'data': {'lower': self.highest_sent, 'upper':  upper}}
-        return {'type': 'range', 'data': {'lower': self.highest_sent, 'upper': self.highest_sent}}
+            out = {'type': 'range', 'data': {'lower': self.highest_sent, 'upper': self.highest_sent}}
+        out = {'type': 'range', 'data': {'lower': self.highest_sent, 'upper':  upper}}
+        self.highest_sent = upper
+        return out
 
     def _save_result(self, data):
         self.highest_recvd = data['upper']
